@@ -1,0 +1,141 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      serviceAccountName: mlops-backend
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      initContainers:
+        - name: dvc-pull
+          image: mlopseyes-backend:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              cp /dvc-pointers/reference.dvc data/reference.dvc
+              dvc remote modify --local minio endpointurl http://minio-service:9000
+              until dvc pull data/reference.dvc eye_cnn_best_val_final.pth.dvc; do sleep 10; done
+              cp eye_cnn_best_val_final.pth /model/eye_cnn_best_val_final.pth
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: minio-credentials, key: MINIO_ROOT_USER}}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: minio-credentials, key: MINIO_ROOT_PASSWORD}}
+          volumeMounts:
+            - {name: data, mountPath: /app/data}
+            - {name: model, mountPath: /model}
+      containers:
+        - name: backend
+          image: mlopseyes-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: http, containerPort: 8000}
+          env:
+            - {name: DATABASE_PATH, value: /app/data/predictions.db}
+            - {name: REFERENCE_DATASET, value: /app/data/reference}
+            - {name: CURRENT_DATASET, value: /app/data/incoming}
+            - {name: DRIFT_REPORT_DIR, value: /app/data/reports/drift}
+            - {name: MODEL_WEIGHTS_PATH, value: /model/eye_cnn_best_val_final.pth}
+            - {name: MLFLOW_TRACKING_URI, value: http://mlflow-service:5000}
+            - {name: MLFLOW_REQUEST_TIMEOUT, value: "5"}
+            - {name: MODEL_REFRESH_SECONDS, value: "30"}
+            - {name: RETRAIN_MODE, value: kubernetes}
+            - {name: K8S_NAMESPACE, value: mlops-eyes}
+            - {name: RETRAIN_IMAGE, value: mlopseyes-backend:latest}
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests: {cpu: 200m, memory: 512Mi}
+            limits: {cpu: "1", memory: 2Gi}
+          volumeMounts:
+            - {name: data, mountPath: /app/data}
+            - {name: model, mountPath: /model}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mlops-data
+        - name: model
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+spec:
+  selector: {app: backend}
+  ports:
+    - {name: http, port: 8000, targetPort: http}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: bootstrap-model
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      initContainers:
+        - name: dvc-pull
+          image: mlopseyes-backend:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              cp /dvc-pointers/reference.dvc data/reference.dvc
+              dvc remote modify --local minio endpointurl http://minio-service:9000
+              until dvc pull data/reference.dvc eye_cnn_best_val_final.pth.dvc; do sleep 10; done
+              cp eye_cnn_best_val_final.pth /model/eye_cnn_best_val_final.pth
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: {secretKeyRef: {name: minio-credentials, key: MINIO_ROOT_USER}}
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: minio-credentials, key: MINIO_ROOT_PASSWORD}}
+          volumeMounts:
+            - {name: data, mountPath: /app/data}
+            - {name: model, mountPath: /model}
+      containers:
+        - name: register
+          image: mlopseyes-backend:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+            - scripts/register_bootstrap.py
+            - --weights
+            - /model/eye_cnn_best_val_final.pth
+            - --data
+            - /app/data/reference
+          env:
+            - {name: MLFLOW_TRACKING_URI, value: http://mlflow-service:5000}
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {cpu: "1", memory: 2Gi}
+          volumeMounts:
+            - {name: data, mountPath: /app/data}
+            - {name: model, mountPath: /model}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mlops-data
+        - name: model
+          emptyDir: {}

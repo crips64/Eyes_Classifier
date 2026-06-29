@@ -1,0 +1,24 @@
+groups:
+  - name: mlops-eyes
+    rules:
+      - alert: ModelDriftDetected
+        expr: max(mlops_data_drift_detected or mlops_target_drift_detected or mlops_prediction_drift_detected or mlops_concept_drift_detected) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Drift detected by Open Eyes monitoring
+      - alert: HighInferenceErrorRate
+        expr: rate(mlops_prediction_errors_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Inference errors exceed the expected rate
+      - alert: LowLabeledAccuracy
+        expr: mlops_labeled_accuracy < 0.85
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Production accuracy on labeled samples is below 85%

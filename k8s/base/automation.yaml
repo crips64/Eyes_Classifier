@@ -1,0 +1,26 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: drift-monitor
+spec:
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 600
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: trigger
+              image: curlimages/curl:8.10.1
+              args:
+                - --fail
+                - --silent
+                - --show-error
+                - --request
+                - POST
+                - http://backend-service:8000/drift/run
+              resources:
+                requests: {cpu: 10m, memory: 16Mi}
+                limits: {cpu: 50m, memory: 64Mi}

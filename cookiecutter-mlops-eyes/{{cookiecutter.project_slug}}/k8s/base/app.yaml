@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: backend}
+  template:
+    metadata:
+      labels: {app: backend}
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/{{cookiecutter.github_owner}}/{{cookiecutter.project_slug}}-backend:latest
+          ports:
+            - containerPort: {{cookiecutter.backend_port}}
+          readinessProbe:
+            httpGet: {path: /health, port: {{cookiecutter.backend_port}}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+spec:
+  selector: {app: backend}
+  ports:
+    - {port: {{cookiecutter.backend_port}}, targetPort: {{cookiecutter.backend_port}}}

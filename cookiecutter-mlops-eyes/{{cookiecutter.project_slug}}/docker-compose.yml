@@ -1,0 +1,72 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    ports:
+      - "{{cookiecutter.backend_port}}:{{cookiecutter.backend_port}}"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    depends_on:
+      - mlflow
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    ports:
+      - "{{cookiecutter.frontend_port}}:{{cookiecutter.frontend_port}}"
+    environment:
+      - API_URL=http://backend:{{cookiecutter.backend_port}}
+      - PROMETHEUS_URL=http://localhost:{{cookiecutter.prometheus_port}}
+      - GRAFANA_URL=http://localhost:{{cookiecutter.grafana_port}}
+      - MLFLOW_URL=http://localhost:{{cookiecutter.mlflow_port}}
+    depends_on:
+      - backend
+      - mlflow
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.22.0
+    ports:
+      - "{{cookiecutter.mlflow_port}}:5000"
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:///mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+    volumes:
+      - mlflow_data:/mlflow
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    ports:
+      - "{{cookiecutter.prometheus_port}}:9090"
+    depends_on:
+      - backend
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports:
+      - "{{cookiecutter.grafana_port}}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
+
+  minio:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
+volumes:
+  mlflow_data:
+  minio_data:

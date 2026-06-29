@@ -1,0 +1,104 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./reports:/app/reports
+      - ./artifacts:/app/artifacts
+      - ./eye_cnn_best_val_final.pth:/model/eye_cnn_best_val_final.pth:ro
+    environment:
+      DATABASE_PATH: /app/data/predictions.db
+      REFERENCE_DATASET: /app/data/reference
+      CURRENT_DATASET: /app/data/incoming
+      DRIFT_REPORT_DIR: /app/reports/drift
+      MODEL_WEIGHTS_PATH: /model/eye_cnn_best_val_final.pth
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_REQUEST_TIMEOUT: "5"
+      MODEL_REFRESH_SECONDS: "30"
+      RETRAIN_MODE: local
+    depends_on:
+      mlflow:
+        condition: service_started
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    ports:
+      - "8501:8501"
+    environment:
+      API_URL: http://backend:8000
+      PROMETHEUS_URL: http://localhost:9090
+      GRAFANA_URL: http://localhost:3000
+      MLFLOW_URL: http://localhost:5001
+    depends_on:
+      - backend
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.22.0
+    ports:
+      - "5001:5000"
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --allowed-hosts mlflow,mlflow:5000,localhost,127.0.0.1
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+      --serve-artifacts
+    volumes:
+      - mlflow_data:/mlflow
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+    depends_on:
+      - backend
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+  minio:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
+  createbucket:
+    image: minio/mc:RELEASE.2024-11-21T17-21-54Z
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done;
+      mc mb local/mlops-eyes --ignore-existing;
+      exit 0;
+      "
+
+volumes:
+  mlflow_data:
+  minio_data:

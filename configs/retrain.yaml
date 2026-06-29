@@ -1,0 +1,19 @@
+# Короткая конфигурация для быстрого переобучения (1–3 эпохи).
+# Переопределение: python scripts/retrain.py --epochs 2
+
+epochs: 2
+batch_size: 32
+learning_rate: 0.001
+seed: 42
+validation_ratio: 0.2
+dataset_path: data/reference
+additional_dataset_path: data/incoming
+experiment_name: open-eyes-classifier
+registered_model_name: open-eyes-cnn
+model_output_path: artifacts/models/open_eyes_cnn_retrain.pth
+initialize_from_champion: true
+initial_weights_path: eye_cnn_best_val_final.pth
+promotion:
+  alias: champion
+  minimum_accuracy: 0.85
+  maximum_accuracy_drop: 0.01

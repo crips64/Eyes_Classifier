@@ -1,0 +1,7 @@
+drift:
+  ks_alpha: 0.05
+  target_drift_threshold: 0.2
+  concept_drift_accuracy_threshold: 0.85
+  minimum_samples: 20
+  auto_retrain_minimum_labeled_samples: 20
+  auto_retrain_cooldown_seconds: 3600

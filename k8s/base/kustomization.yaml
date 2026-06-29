@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: mlops-eyes
+resources:
+  - namespace.yaml
+  - storage.yaml
+  - minio.yaml
+  - mlflow.yaml
+  - rbac.yaml
+  - backend.yaml
+  - frontend.yaml
+  - monitoring.yaml
+  - automation.yaml
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: mlops-eyes

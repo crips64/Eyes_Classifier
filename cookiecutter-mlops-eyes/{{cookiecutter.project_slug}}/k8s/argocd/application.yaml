@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{cookiecutter.project_slug}}
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/{{cookiecutter.github_owner}}/{{cookiecutter.project_slug}}.git
+    targetRevision: gitops
+    path: k8s/overlays/minikube
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{cookiecutter.kubernetes_namespace}}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}

@@ -1,0 +1,7 @@
+-r requirements.txt
+pytest
+pytest-cov
+ruff
+httpx
+dvc[s3]
+cookiecutter

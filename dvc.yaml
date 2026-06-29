@@ -1,0 +1,41 @@
+stages:
+  train:
+    cmd: python -m backend.src.train --config configs/train.yaml
+    deps:
+      - backend/src/train.py
+      - configs/train.yaml
+      - data/reference
+    params:
+      - configs/train.yaml:
+          - epochs
+          - batch_size
+          - learning_rate
+          - seed
+          - validation_ratio
+          - dataset_path
+          - additional_dataset_path
+          - promotion.minimum_accuracy
+          - promotion.maximum_accuracy_drop
+    outs:
+      - artifacts/models/open_eyes_cnn_mlflow.pth:
+          cache: true
+
+  drift:
+    cmd: python -m backend.src.drift --reference data/reference --current data/incoming --output reports/drift --params params.yaml
+    deps:
+      - backend/src/drift.py
+      - backend/src/features.py
+      - backend/src/reports.py
+      - data/reference
+      - data/incoming
+    params:
+      - params.yaml:
+          - drift.ks_alpha
+          - drift.target_drift_threshold
+          - drift.concept_drift_accuracy_threshold
+          - drift.minimum_samples
+    outs:
+      - reports/drift/latest_drift_report.json:
+          cache: false
+      - reports/drift/latest_drift_report.html:
+          cache: false

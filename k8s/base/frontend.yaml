@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: frontend
+          image: mlopseyes-frontend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: http, containerPort: 8501}
+          env:
+            - {name: API_URL, value: http://backend-service:8000}
+            - {name: PROMETHEUS_URL, value: http://localhost:9090}
+            - {name: GRAFANA_URL, value: http://localhost:3000}
+            - {name: MLFLOW_URL, value: http://localhost:5001}
+          readinessProbe:
+            httpGet: {path: /_stcore/health, port: http}
+            initialDelaySeconds: 10
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+spec:
+  selector: {app: frontend}
+  ports:
+    - {name: http, port: 8501, targetPort: http}

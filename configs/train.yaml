@@ -1,0 +1,14 @@
+epochs: 3
+batch_size: 32
+learning_rate: 0.001
+seed: 42
+validation_ratio: 0.2
+experiment_name: open-eyes-classifier
+registered_model_name: open-eyes-cnn
+model_output_path: artifacts/models/open_eyes_cnn_mlflow.pth
+dataset_path: data/reference
+additional_dataset_path: data/incoming
+promotion:
+  alias: champion
+  minimum_accuracy: 0.85
+  maximum_accuracy_drop: 0.01
