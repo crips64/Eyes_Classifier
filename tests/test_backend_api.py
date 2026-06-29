@@ -12,7 +12,7 @@ from PIL import Image
 
 from backend.app.main import app
 from backend.app.services.metrics_service import restore_labeled_accuracy
-from backend.app.services.predictor import ModelManager
+from backend.app.services.predictor import ModelManager, registry_model_uri
 from backend.app.storage import init_db, labeled_prediction_stats, save_prediction
 from open_eyes_classifier import MediumEyeCNN
 
@@ -38,6 +38,19 @@ def _image_bytes(value: int = 128) -> bytes:
     buffer = io.BytesIO()
     Image.new("L", (24, 24), color=value).save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+def test_registry_model_uri_uses_proxy_for_legacy_server_path():
+    source = "/mlflow/artifacts/1/run-id/artifacts/model"
+
+    assert (
+        registry_model_uri(source, "open-eyes-cnn", "champion")
+        == "mlflow-artifacts:/1/run-id/artifacts/model"
+    )
+    assert (
+        registry_model_uri("s3://bucket/model", "open-eyes-cnn", "champion")
+        == "models:/open-eyes-cnn@champion"
+    )
 
 
 def test_health_and_ready(client):

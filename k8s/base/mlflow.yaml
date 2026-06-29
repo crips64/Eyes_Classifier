@@ -27,6 +27,8 @@ spec:
             - --backend-store-uri
             - sqlite:////mlflow/mlflow.db
             - --default-artifact-root
+            - mlflow-artifacts:/
+            - --artifacts-destination
             - /mlflow/artifacts
             - --serve-artifacts
           ports:

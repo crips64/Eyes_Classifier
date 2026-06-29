@@ -33,6 +33,15 @@ ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
 
 
+def registry_model_uri(source: str, model_name: str, alias: str) -> str:
+    """Use MLflow's artifact proxy for legacy server-local artifact paths."""
+    server_artifact_root = "/mlflow/artifacts/"
+    if source.startswith(server_artifact_root):
+        relative_path = source.removeprefix(server_artifact_root)
+        return f"mlflow-artifacts:/{relative_path}"
+    return f"models:/{model_name}@{alias}"
+
+
 class Predictor(Protocol):
     def predict(self, image_path: str) -> float: ...
 
@@ -118,8 +127,13 @@ class ModelManager:
             candidate_version = f"mlflow:{REGISTERED_MODEL_NAME}:{candidate.version}"
             if candidate_version == self.version:
                 return False
+            model_uri = registry_model_uri(
+                candidate.source,
+                REGISTERED_MODEL_NAME,
+                MODEL_ALIAS,
+            )
             model = mlflow.pytorch.load_model(
-                f"models:/{REGISTERED_MODEL_NAME}@{MODEL_ALIAS}",
+                model_uri,
                 map_location="cpu",
             )
             predictor = PytorchModelPredictor(model)

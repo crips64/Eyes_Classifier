@@ -4,6 +4,7 @@ param(
     [int]$GitDaemonPort = 9418,
     [int]$MinikubeCpus = 4,
     [int]$MinikubeMemoryMb = 6144,
+    [int]$MinioLocalPort = 19000,
     [bool]$IncludeWorkingTree = $true,
     [bool]$VerifySelfHeal = $true,
     [bool]$VerifyRepeatedSync = $true
@@ -171,14 +172,14 @@ if (-not $minioCreated) {
 kubectl wait --for=condition=available deployment/minio `
     -n mlops-eyes --timeout=240s
 $portForward = Start-Process kubectl `
-    -ArgumentList "port-forward", "svc/minio-service", "9000:9000", "-n", "mlops-eyes" `
+    -ArgumentList "port-forward", "svc/minio-service", "${MinioLocalPort}:9000", "-n", "mlops-eyes" `
     -WindowStyle Hidden -PassThru
 try {
     $minioForwardReady = $false
     for ($attempt = 0; $attempt -lt 30; $attempt++) {
         try {
             $health = Invoke-WebRequest `
-                "http://127.0.0.1:9000/minio/health/ready" `
+                "http://127.0.0.1:$MinioLocalPort/minio/health/ready" `
                 -UseBasicParsing -TimeoutSec 2
             if ($health.StatusCode -eq 200) {
                 $minioForwardReady = $true
@@ -194,7 +195,7 @@ try {
     }
     $env:AWS_ACCESS_KEY_ID = "minioadmin"
     $env:AWS_SECRET_ACCESS_KEY = "minioadmin"
-    Invoke-Dvc remote modify --local minio endpointurl http://localhost:9000
+    Invoke-Dvc remote modify --local minio endpointurl "http://localhost:$MinioLocalPort"
     Invoke-Dvc push data/reference.dvc eye_cnn_best_val_final.pth.dvc
 }
 finally {
