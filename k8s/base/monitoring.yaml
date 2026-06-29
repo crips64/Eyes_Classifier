@@ -16,8 +16,12 @@ data:
       - name: mlops-eyes
         rules:
           - alert: ModelDriftDetected
-            expr: max(mlops_data_drift_detected or mlops_target_drift_detected or mlops_prediction_drift_detected or mlops_concept_drift_detected) > 0
+            expr: max(mlops_data_drift_detected) > 0 or max(mlops_target_drift_detected) > 0 or max(mlops_prediction_drift_detected) > 0 or max(mlops_concept_drift_detected) > 0
             for: 1m
+            labels: {severity: warning}
+          - alert: HighInferenceErrorRate
+            expr: sum(rate(mlops_prediction_errors_total[5m])) / clamp_min(sum(rate(mlops_prediction_errors_total[5m])) + rate(mlops_predictions_total[5m]), 0.001) > 0.05
+            for: 2m
             labels: {severity: warning}
           - alert: LowLabeledAccuracy
             expr: mlops_labeled_accuracy < 0.85

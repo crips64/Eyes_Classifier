@@ -7,7 +7,7 @@ experiment_name: open-eyes-classifier
 registered_model_name: open-eyes-cnn
 model_output_path: artifacts/models/open_eyes_cnn_mlflow.pth
 dataset_path: data/reference
-additional_dataset_path: data/incoming
+additional_dataset_path: null
 promotion:
   alias: champion
   minimum_accuracy: 0.85

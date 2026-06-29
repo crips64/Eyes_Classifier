@@ -16,7 +16,12 @@ metadata and alerts are persisted in SQLite.
 
 Prometheus exposes inference volume/latency/errors, anomaly and class counts,
 labeled accuracy, drift flags, retrain outcomes and active model version.
-Grafana is provisioned automatically.
+Grafana is provisioned automatically. The combined alert uses separate PromQL
+comparisons for data, target, prediction and concept drift, so a target-only or
+concept-only event cannot be hidden by another zero-valued series.
+
+The running labeled accuracy is rebuilt from persisted predictions on backend
+startup instead of resetting to an empty process-local value.
 
 The Kubernetes CronJob calls `POST /drift/run` every 10 minutes. A warning starts
 automatic retraining only when at least 20 current samples are labeled and the

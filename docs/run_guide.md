@@ -22,6 +22,8 @@ $env:AWS_SECRET_ACCESS_KEY = "minioadmin"
 dvc remote modify --local minio endpointurl http://localhost:9000
 dvc push data/reference.dvc eye_cnn_best_val_final.pth.dvc
 dvc pull
+dvc repro train
+dvc status train
 ```
 
 Файл `.dvc/config.local` и credentials не коммитятся.
@@ -41,7 +43,7 @@ $env:MLFLOW_TRACKING_URI = "http://localhost:5001"
 python scripts/register_bootstrap.py
 python -m backend.src.train --config configs/train.yaml --fast-dev-run
 python -m backend.src.drift --reference data/reference --current data/incoming --output reports/drift --params params.yaml
-dvc repro
+dvc repro drift
 ```
 
 ## 5. Minikube / Argo CD
@@ -49,7 +51,7 @@ dvc repro
 Установите Docker Desktop, `kubectl` и `minikube`, затем:
 
 ```powershell
-minikube start --cpus 4 --memory 8192
+minikube start --cpus 4 --memory 6144
 $token = Read-Host "GitHub PAT" -AsSecureString
 .\scripts\bootstrap-minikube.ps1 `
   -GitHubUsername "your-user" `
@@ -67,6 +69,8 @@ $token = Read-Host "GitHub PAT" -AsSecureString
 
 Скрипт собирает SHA-образы, загружает их в Minikube, создаёт временный bare Git
 repository, запускает `git daemon` и подключает Argo CD к ветке `gitops`.
+Для локальной приёмки в snapshot включаются текущие tracked и untracked
+неигнорируемые изменения; основной Git repository при этом не коммитится.
 
 После успешного bootstrap полный lifecycle проверяется командой:
 
@@ -76,6 +80,8 @@ repository, запускает `git daemon` и подключает Argo CD к �
 
 Проверка загружает 20 размеченных изображений, вызывает drift, ожидает
 автоматический retrain Job, promotion в MLflow и hot reload модели.
+Bootstrap-скрипт также публикует второй локальный GitOps commit и проверяет Argo
+CD self-heal и безопасное пересоздание идемпотентного bootstrap hook.
 
 ```powershell
 kubectl get application -n argocd mlops-eyes

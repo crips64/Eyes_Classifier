@@ -10,6 +10,8 @@
 8. Открыть MLflow run: параметры, метрики, confusion matrix и model version.
 9. Показать alias `champion` и изменение `model_version` в `/health` после polling.
 10. Запустить ручной retrain из UI и показать историю Jobs.
+11. Повторно синхронизировать Argo CD и показать, что bootstrap hook завершается
+    без immutable Job ошибки и без смены существующего champion.
 
 Быстрая проверка:
 
@@ -18,4 +20,5 @@ kubectl get application -n argocd mlops-eyes
 kubectl get pods,jobs,cronjobs -n mlops-eyes
 curl http://localhost:8000/ready
 curl http://localhost:8000/metrics
+dvc status train
 ```

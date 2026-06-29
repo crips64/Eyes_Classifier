@@ -6,6 +6,8 @@ from pathlib import Path
 
 import torch
 import yaml
+from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import INVALID_PARAMETER_VALUE, RESOURCE_DOES_NOT_EXIST
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -113,3 +115,33 @@ def test_retrain_falls_back_to_bootstrap_weights(tmp_path, monkeypatch):
     model, source = initialize_model(config, torch.device("cpu"))
     assert isinstance(model, MediumEyeCNN)
     assert source == f"weights:{weights}"
+
+
+def test_bootstrap_registration_is_idempotent():
+    from scripts.register_bootstrap import existing_champion_version
+
+    champion = type("Version", (), {"version": "7"})()
+    client = type(
+        "Client",
+        (),
+        {"get_model_version_by_alias": lambda self, name, alias: champion},
+    )()
+    assert existing_champion_version(client, "model", "champion") == "7"
+
+    class MissingAlias:
+        def get_model_version_by_alias(self, name, alias):
+            raise MlflowException("missing", error_code=RESOURCE_DOES_NOT_EXIST)
+
+    assert existing_champion_version(MissingAlias(), "model", "champion") is None
+
+    class MissingAliasOnMlflow222:
+        def get_model_version_by_alias(self, name, alias):
+            raise MlflowException(
+                "Registered model alias champion not found",
+                error_code=INVALID_PARAMETER_VALUE,
+            )
+
+    assert (
+        existing_champion_version(MissingAliasOnMlflow222(), "model", "champion")
+        is None
+    )

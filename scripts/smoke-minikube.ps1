@@ -63,13 +63,24 @@ try {
     if ($drift.status -ne "warning") {
         throw "Expected drift warning, received: $($drift.status)"
     }
-    if (-not $drift.auto_retrain_job_id) {
-        throw "Automatic retraining was not scheduled"
+    $retrainJobId = $drift.auto_retrain_job_id
+    if (-not $retrainJobId -and $drift.message -like "*cooldown*") {
+        Write-Host "Auto retrain cooldown is active; using manual retrain for rerun"
+        $manualRetrain = Invoke-RestMethod `
+            -Method Post `
+            -Uri "http://127.0.0.1:$BackendPort/retrain" `
+            -ContentType "application/json" `
+            -Body '{"epochs":2}' `
+            -TimeoutSec 30
+        $retrainJobId = $manualRetrain.job_id
+    }
+    if (-not $retrainJobId) {
+        throw "Retraining was not scheduled: $($drift.message)"
     }
 
     kubectl wait `
         --for=condition=complete `
-        "job/$($drift.auto_retrain_job_id)" `
+        "job/$retrainJobId" `
         -n $Namespace `
         --timeout=1200s
     if ($LASTEXITCODE -ne 0) {
@@ -88,6 +99,19 @@ try {
         }
     }
     if ($activeVersion -eq $initialVersion) {
+        Write-Host "Readiness diagnostics:"
+        Invoke-RestMethod "http://127.0.0.1:$BackendPort/ready" |
+            ConvertTo-Json -Depth 8 | Write-Host
+        Write-Host "Registered model diagnostics:"
+        Invoke-RestMethod "http://127.0.0.1:$BackendPort/models" |
+            ConvertTo-Json -Depth 8 | Write-Host
+        Write-Host "Retrain history:"
+        Invoke-RestMethod "http://127.0.0.1:$BackendPort/retrain/status" |
+            ConvertTo-Json -Depth 8 | Write-Host
+        Write-Host "Retrain Job logs:"
+        kubectl logs "job/$retrainJobId" -n $Namespace --tail=200
+        Write-Host "Backend logs:"
+        kubectl logs deployment/backend -n $Namespace --tail=200
         throw "The promoted MLflow model was not hot-reloaded"
     }
 

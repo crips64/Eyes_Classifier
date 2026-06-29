@@ -5,26 +5,51 @@ param(
     [System.Security.SecureString]$GitHubToken,
     [Parameter(Mandatory = $true)]
     [string]$RepositoryUrl,
-    [string]$TargetRevision = "gitops"
+    [string]$TargetRevision = "gitops",
+    [int]$MinikubeCpus = 4,
+    [int]$MinikubeMemoryMb = 6144
 )
 
 $ErrorActionPreference = "Stop"
 $plainToken = [System.Net.NetworkCredential]::new("", $GitHubToken).Password
+$projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$dvcPython = Join-Path $projectRoot ".venv/Scripts/python.exe"
 
-foreach ($command in @("minikube", "kubectl", "dvc")) {
+foreach ($command in @("minikube", "kubectl")) {
     if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
         throw "Required command is not installed: $command"
+    }
+}
+if (-not (Test-Path -LiteralPath $dvcPython) -and
+    -not (Get-Command dvc -ErrorAction SilentlyContinue)) {
+    throw "DVC is not available in .venv or PATH"
+}
+function Invoke-Dvc {
+    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$DvcArgs)
+    if (Test-Path -LiteralPath $dvcPython) {
+        & $dvcPython -m dvc @DvcArgs
+    }
+    else {
+        & dvc @DvcArgs
+    }
+    if ($LASTEXITCODE -ne 0) {
+        throw "DVC command failed: $($DvcArgs -join ' ')"
     }
 }
 
 minikube status | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    minikube start --cpus 4 --memory 8192
+    minikube start --cpus $MinikubeCpus --memory $MinikubeMemoryMb
 }
 
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply -n argocd -f "https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
+kubectl apply --server-side --force-conflicts -n argocd `
+    -f "https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
 kubectl wait --for=condition=Established crd/applications.argoproj.io --timeout=120s
+kubectl rollout status statefulset/argocd-application-controller `
+    -n argocd --timeout=300s
+kubectl rollout status deployment/argocd-repo-server `
+    -n argocd --timeout=300s
 kubectl create namespace mlops-eyes --dry-run=client -o yaml | kubectl apply -f -
 
 kubectl create secret docker-registry ghcr-pull-secret `
@@ -56,17 +81,59 @@ $application = $application.Replace(
     $RepositoryUrl
 ).Replace("targetRevision: gitops", "targetRevision: $TargetRevision")
 $application | kubectl apply -f -
+$activeOperation = kubectl get application mlops-eyes -n argocd `
+    -o jsonpath='{.operation.sync.revision}'
+if ($activeOperation) {
+    $clearOperationPatch = '{\"operation\":null}'
+    kubectl patch application mlops-eyes -n argocd `
+        --type=merge -p $clearOperationPatch
+}
+kubectl annotate application mlops-eyes -n argocd `
+    argocd.argoproj.io/refresh=hard --overwrite
 
-kubectl rollout status deployment/minio -n mlops-eyes --timeout=180s
+$minioCreated = $false
+for ($attempt = 0; $attempt -lt 60; $attempt++) {
+    kubectl get deployment/minio -n mlops-eyes | Out-Null
+    $deploymentExists = $LASTEXITCODE -eq 0
+    kubectl get service/minio-service -n mlops-eyes | Out-Null
+    $serviceExists = $LASTEXITCODE -eq 0
+    if ($deploymentExists -and $serviceExists) {
+        $minioCreated = $true
+        break
+    }
+    Start-Sleep -Seconds 5
+}
+if (-not $minioCreated) {
+    throw "Argo CD did not create the MinIO deployment"
+}
+kubectl wait --for=condition=available deployment/minio `
+    -n mlops-eyes --timeout=240s
 $portForward = Start-Process kubectl `
     -ArgumentList "port-forward", "svc/minio-service", "9000:9000", "-n", "mlops-eyes" `
     -WindowStyle Hidden -PassThru
 try {
-    Start-Sleep -Seconds 3
+    $minioForwardReady = $false
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+        try {
+            $health = Invoke-WebRequest `
+                "http://127.0.0.1:9000/minio/health/ready" `
+                -UseBasicParsing -TimeoutSec 2
+            if ($health.StatusCode -eq 200) {
+                $minioForwardReady = $true
+                break
+            }
+        }
+        catch {
+            Start-Sleep -Seconds 2
+        }
+    }
+    if (-not $minioForwardReady) {
+        throw "MinIO port-forward did not become ready"
+    }
     $env:AWS_ACCESS_KEY_ID = "minioadmin"
     $env:AWS_SECRET_ACCESS_KEY = "minioadmin"
-    dvc remote modify --local minio endpointurl http://localhost:9000
-    dvc push data/reference.dvc eye_cnn_best_val_final.pth.dvc
+    Invoke-Dvc remote modify --local minio endpointurl http://localhost:9000
+    Invoke-Dvc push data/reference.dvc eye_cnn_best_val_final.pth.dvc
 }
 finally {
     Stop-Process -Id $portForward.Id -ErrorAction SilentlyContinue

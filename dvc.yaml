@@ -22,12 +22,12 @@ stages:
 
   drift:
     cmd: python -m backend.src.drift --reference data/reference --current data/incoming --output reports/drift --params params.yaml
+    always_changed: true
     deps:
       - backend/src/drift.py
       - backend/src/features.py
       - backend/src/reports.py
       - data/reference
-      - data/incoming
     params:
       - params.yaml:
           - drift.ks_alpha

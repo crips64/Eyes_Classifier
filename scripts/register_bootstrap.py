@@ -10,6 +10,8 @@ from pathlib import Path
 import mlflow
 import mlflow.pytorch
 import torch
+from mlflow.exceptions import MlflowException
+from mlflow.tracking import MlflowClient
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
@@ -24,6 +26,27 @@ from backend.src.train import (
 from open_eyes_classifier import MediumEyeCNN
 
 
+def existing_champion_version(
+    client: MlflowClient,
+    model_name: str,
+    alias: str,
+) -> str | None:
+    """Return the active version, while only treating a missing alias as absent."""
+    try:
+        return str(client.get_model_version_by_alias(model_name, alias).version)
+    except MlflowException as exc:
+        if exc.error_code == "RESOURCE_DOES_NOT_EXIST":
+            return None
+        message = str(exc).lower()
+        if (
+            exc.error_code == "INVALID_PARAMETER_VALUE"
+            and "alias" in message
+            and "not found" in message
+        ):
+            return None
+        raise
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Register bootstrap model in MLflow")
     parser.add_argument("--weights", default="eye_cnn_best_val_final.pth")
@@ -34,6 +57,21 @@ def main() -> int:
         return 1
 
     config = TrainConfig(data=args.data)
+    mlflow.set_tracking_uri(
+        os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+    )
+    champion_version = existing_champion_version(
+        MlflowClient(),
+        config.registered_model_name,
+        config.promotion_alias,
+    )
+    if champion_version is not None:
+        print(
+            f"Champion already exists: model={config.registered_model_name} "
+            f"version={champion_version}; bootstrap registration skipped"
+        )
+        return 0
+
     transform = transforms.Compose(
         [transforms.Grayscale(), transforms.Resize((24, 24)), transforms.ToTensor()]
     )
@@ -49,9 +87,6 @@ def main() -> int:
     y_true, y_pred = collect_predictions(model, loader, device)
     metrics = compute_metrics(y_true, y_pred)
 
-    mlflow.set_tracking_uri(
-        os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
-    )
     mlflow.set_experiment(config.experiment_name)
     with mlflow.start_run(run_name="bootstrap-model") as run:
         mlflow.log_params(

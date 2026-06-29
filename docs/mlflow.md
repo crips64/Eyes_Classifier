@@ -14,6 +14,10 @@ as the explicit fallback). New labeled production samples are added only to the
 training partition; promotion is evaluated on the deterministic reference
 holdout so candidates remain comparable.
 
+Bootstrap registration first checks the `champion` alias and exits successfully
+when it already exists. The Argo CD Sync hook is therefore safe to repeat and
+does not create duplicate bootstrap versions or replace a trained champion.
+
 The API polls `models:/open-eyes-cnn@champion` every 30 seconds and swaps the
 in-memory predictor only after the new model has loaded successfully.
 

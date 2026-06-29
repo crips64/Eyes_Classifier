@@ -11,8 +11,9 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from backend.app.main import app
+from backend.app.services.metrics_service import restore_labeled_accuracy
 from backend.app.services.predictor import ModelManager
-from backend.app.storage import init_db
+from backend.app.storage import init_db, labeled_prediction_stats, save_prediction
 from open_eyes_classifier import MediumEyeCNN
 
 
@@ -148,3 +149,34 @@ def test_alert_lifecycle(client):
     response = client.get("/alerts?unacknowledged_only=true")
     assert any(alert["id"] == alert_id for alert in response.json()["alerts"])
     assert client.post(f"/alerts/{alert_id}/acknowledge").status_code == 200
+
+
+def test_labeled_accuracy_is_restored_from_storage(tmp_path):
+    database = tmp_path / "predictions.db"
+    init_db(database)
+    for index, (label, true_label) in enumerate(
+        [("opened", "opened"), ("closed", "opened"), ("closed", None)]
+    ):
+        save_prediction(
+            filename=f"{index}.png",
+            stored_path=f"/tmp/{index}.png",
+            score=0.5,
+            label=label,
+            true_label=true_label,
+            is_anomaly=False,
+            created_at="2026-06-29T00:00:00+00:00",
+            model_version="test",
+            db_path=database,
+        )
+
+    labeled, correct = labeled_prediction_stats(database)
+    restore_labeled_accuracy(labeled, correct)
+
+    assert (labeled, correct) == (2, 1)
+    assert "mlops_labeled_accuracy 0.5" in client_metrics_text()
+
+
+def client_metrics_text() -> str:
+    from prometheus_client import generate_latest
+
+    return generate_latest().decode()

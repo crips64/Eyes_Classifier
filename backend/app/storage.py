@@ -181,6 +181,21 @@ def list_predictions(
     )
 
 
+def labeled_prediction_stats(db_path: Path | None = None) -> tuple[int, int]:
+    """Return persisted labeled/correct counts used to restore quality metrics."""
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS labeled,
+                COALESCE(SUM(CASE WHEN label = true_label THEN 1 ELSE 0 END), 0) AS correct
+            FROM predictions
+            WHERE true_label IS NOT NULL
+            """
+        ).fetchone()
+    return int(row["labeled"]), int(row["correct"])
+
+
 def save_retrain_event(
     *,
     status: str,

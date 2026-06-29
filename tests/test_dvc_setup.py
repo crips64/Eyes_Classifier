@@ -10,6 +10,7 @@ def test_dvc_contract():
     assert (ROOT / "data" / "reference.dvc").is_file()
     assert (ROOT / "eye_cnn_best_val_final.pth.dvc").is_file()
     assert (ROOT / "dvc.yaml").is_file()
+    assert (ROOT / "dvc.lock").is_file()
 
 
 def test_dvc_config_contains_no_credentials():
@@ -17,6 +18,11 @@ def test_dvc_config_contains_no_credentials():
     assert "s3://mlops-eyes/dvc" in content
     assert "access_key_id" not in content
     assert "secret_access_key" not in content
+
+
+def test_root_dvc_ignores_the_cookiecutter_template_pipeline():
+    content = (ROOT / ".dvcignore").read_text(encoding="utf-8")
+    assert "cookiecutter-mlops-eyes/" in content
 
 
 def test_data_pointer_is_nonempty():
@@ -29,6 +35,8 @@ def test_training_stage_tracks_the_config_it_reads():
     assert "python -m backend.src.train --config configs/train.yaml" in content
     assert "configs/train.yaml:" in content
     assert "--fast-dev-run" not in content
+    assert "always_changed: true" in content
+    assert "      - data/incoming\n" not in content
 
 
 def test_ci_and_manifests_do_not_pin_a_student_account():

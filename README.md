@@ -57,16 +57,24 @@ data/
 Bootstrap-веса `eye_cnn_best_val_final.pth` также отслеживаются DVC. В Git и
 Docker-образы тяжёлые артефакты не включаются.
 
+`dvc.lock` фиксирует воспроизводимый baseline training только на
+`data/reference`. Каталог `data/incoming` является production-состоянием и
+используется в retrain и operational drift stage, но не подмешивается в baseline.
+
 ```bash
 docker compose up -d minio createbucket
 set AWS_ACCESS_KEY_ID=minioadmin
 set AWS_SECRET_ACCESS_KEY=minioadmin
 dvc pull
+python -m dvc repro train
+python -m dvc status train
 ```
 
 ## Локальный запуск
 
-Требования: Python 3.10, Docker Compose и DVC.
+Требования: Python 3.10, Docker Compose и DVC. Для полного Minikube-стека
+рекомендуется 4 CPU / 8 ГБ RAM; минимальная конфигурация скрипта — 4 CPU /
+6144 МБ.
 
 ```bash
 python -m venv .venv
@@ -125,6 +133,10 @@ MLflow `champion`. Пороговые значения находятся в `pa
 не хуже действующего champion более чем на `0.01`. Backend проверяет alias каждые
 30 секунд и меняет модель атомарно без остановки API.
 
+При рестарте backend running accuracy восстанавливается из SQLite. Kubernetes
+retrain Job самостоятельно получает fallback-веса из DVC, поэтому не зависит от
+файловой системы backend Pod.
+
 ## Minikube и Argo CD
 
 Репозиторий и GHCR считаются приватными. Токен не сохраняется в файлах:
@@ -143,6 +155,10 @@ PAT должен иметь `repo` и `read:packages`. Скрипт:
 2. создаёт private-repo, GHCR и MinIO secrets;
 3. применяет Argo CD Application;
 4. загружает DVC-артефакты в MinIO.
+
+Bootstrap MLflow оформлен как идемпотентный Argo CD Sync hook: повторная
+синхронизация удаляет предыдущий Job перед созданием и не перезаписывает уже
+существующий `champion`.
 
 Полностью локальная проверка без GitHub использует локальные SHA-образы и
 временный Git-сервер:
@@ -182,6 +198,7 @@ Kustomize tags в ветке `gitops`. Argo CD применяет immutable SHA-
 ruff check .
 pytest -v --cov=backend --cov-fail-under=75
 dvc dag
+python -m dvc status train
 docker compose config --quiet
 kubectl kustomize k8s/overlays/minikube
 ```

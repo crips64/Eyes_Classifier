@@ -163,6 +163,44 @@ def _create_kubernetes_job(job_id: str, epochs: int, trigger_type: str) -> None:
                 "spec": {
                     "restartPolicy": "Never",
                     "imagePullSecrets": [{"name": "ghcr-pull-secret"}],
+                    "initContainers": [
+                        {
+                            "name": "bootstrap-weights",
+                            "image": image,
+                            "command": ["/bin/sh", "-c"],
+                            "args": [
+                                "dvc remote modify --local minio endpointurl "
+                                "http://minio-service:9000 && "
+                                "until dvc pull eye_cnn_best_val_final.pth.dvc; "
+                                "do sleep 10; done && "
+                                "cp eye_cnn_best_val_final.pth "
+                                "/model/eye_cnn_best_val_final.pth"
+                            ],
+                            "env": [
+                                {
+                                    "name": "AWS_ACCESS_KEY_ID",
+                                    "valueFrom": {
+                                        "secretKeyRef": {
+                                            "name": "minio-credentials",
+                                            "key": "MINIO_ROOT_USER",
+                                        }
+                                    },
+                                },
+                                {
+                                    "name": "AWS_SECRET_ACCESS_KEY",
+                                    "valueFrom": {
+                                        "secretKeyRef": {
+                                            "name": "minio-credentials",
+                                            "key": "MINIO_ROOT_PASSWORD",
+                                        }
+                                    },
+                                },
+                            ],
+                            "volumeMounts": [
+                                {"name": "model", "mountPath": "/model"},
+                            ],
+                        }
+                    ],
                     "containers": [
                         {
                             "name": "trainer",
@@ -180,9 +218,18 @@ def _create_kubernetes_job(job_id: str, epochs: int, trigger_type: str) -> None:
                                     "value": "open-eyes-cnn",
                                 },
                                 {"name": "MLFLOW_MODEL_ALIAS", "value": "champion"},
+                                {
+                                    "name": "MODEL_WEIGHTS_PATH",
+                                    "value": "/model/eye_cnn_best_val_final.pth",
+                                },
                             ],
                             "volumeMounts": [
                                 {"name": "data", "mountPath": "/app/data"},
+                                {
+                                    "name": "model",
+                                    "mountPath": "/model",
+                                    "readOnly": True,
+                                },
                             ],
                             "resources": {
                                 "requests": {"cpu": "250m", "memory": "512Mi"},
@@ -194,7 +241,8 @@ def _create_kubernetes_job(job_id: str, epochs: int, trigger_type: str) -> None:
                         {
                             "name": "data",
                             "persistentVolumeClaim": {"claimName": "mlops-data"},
-                        }
+                        },
+                        {"name": "model", "emptyDir": {}},
                     ],
                 },
             },

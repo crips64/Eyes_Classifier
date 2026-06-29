@@ -46,6 +46,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: minio-service
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
 spec:
   selector: {app: minio}
   ports:
@@ -57,6 +59,8 @@ kind: Job
 metadata:
   name: minio-create-bucket
   annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
     argocd.argoproj.io/sync-wave: "-2"
 spec:
   ttlSecondsAfterFinished: 3600

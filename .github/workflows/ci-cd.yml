@@ -60,8 +60,17 @@ jobs:
       - name: Validate DVC pipeline without remote access
         run: |
           dvc dag
+          test -f dvc.lock
           test -f data/reference.dvc
           test -f eye_cnn_best_val_final.pth.dvc
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          lock = yaml.safe_load(Path("dvc.lock").read_text())
+          assert "train" in lock["stages"]
+          assert lock["stages"]["train"]["params"]["configs/train.yaml"]["additional_dataset_path"] is None
+          PY
 
       - uses: azure/setup-kubectl@v4
 

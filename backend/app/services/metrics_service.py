@@ -71,6 +71,16 @@ _correct_count = 0
 _active_version: str | None = None
 
 
+def restore_labeled_accuracy(labeled_count: int, correct_count: int) -> None:
+    """Restore the persisted business-quality gauge after a backend restart."""
+    global _correct_count, _labeled_count
+    _labeled_count = max(0, labeled_count)
+    _correct_count = min(max(0, correct_count), _labeled_count)
+    LABELED_ACCURACY.set(
+        _correct_count / _labeled_count if _labeled_count else 0
+    )
+
+
 def record_prediction(
     *,
     score: float,

@@ -33,6 +33,7 @@ from backend.app.services.drift_service import REPORT_DIR, get_latest_drift_repo
 from backend.app.services.metrics_service import (
     record_prediction,
     record_prediction_error,
+    restore_labeled_accuracy,
 )
 from backend.app.services.mlflow_service import (
     is_mlflow_reachable,
@@ -44,6 +45,7 @@ from backend.app.services.retrain_service import schedule_retrain, sync_kubernet
 from backend.app.storage import (
     acknowledge_alert,
     init_db,
+    labeled_prediction_stats,
     list_alerts,
     list_drift_reports,
     list_predictions,
@@ -56,6 +58,7 @@ from backend.app.storage import (
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
+    restore_labeled_accuracy(*labeled_prediction_stats())
     try:
         model_manager.start()
     except Exception as exc:  # noqa: BLE001
