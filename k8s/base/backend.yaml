@@ -51,7 +51,7 @@ spec:
             - {name: MODEL_REFRESH_SECONDS, value: "30"}
             - {name: RETRAIN_MODE, value: kubernetes}
             - {name: K8S_NAMESPACE, value: mlops-eyes}
-            - {name: RETRAIN_IMAGE, value: ghcr.io/crips64/mlopseyes-backend:sha-9aae683bbfac43ef217f74a12b9ab309a574471e}
+            - {name: RETRAIN_IMAGE, value: ghcr.io/crips64/mlopseyes-backend:sha-7b090e88f65fd69c833fbc63538e9f39a07f6f8d}
           readinessProbe:
             httpGet: {path: /ready, port: http}
             initialDelaySeconds: 20
