@@ -9,6 +9,57 @@ $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $projectRoot
 New-Item -ItemType Directory -Force -Path artifacts/smoke-minikube | Out-Null
 
+function Test-LocalPortAvailable {
+    param([int]$Port)
+    $listener = $null
+    try {
+        $listener = [System.Net.Sockets.TcpListener]::new(
+            [System.Net.IPAddress]::Parse("127.0.0.1"),
+            $Port
+        )
+        $listener.Start()
+        return $true
+    }
+    catch {
+        return $false
+    }
+    finally {
+        if ($listener) {
+            $listener.Stop()
+        }
+    }
+}
+
+function Get-FreeLocalPort {
+    $listener = [System.Net.Sockets.TcpListener]::new(
+        [System.Net.IPAddress]::Parse("127.0.0.1"),
+        0
+    )
+    try {
+        $listener.Start()
+        return $listener.LocalEndpoint.Port
+    }
+    finally {
+        $listener.Stop()
+    }
+}
+
+function Resolve-ForwardPort {
+    param(
+        [int]$PreferredPort,
+        [string]$Name
+    )
+    if (Test-LocalPortAvailable $PreferredPort) {
+        return $PreferredPort
+    }
+    $fallbackPort = Get-FreeLocalPort
+    Write-Host "$Name local port $PreferredPort is unavailable; using $fallbackPort"
+    return $fallbackPort
+}
+
+$BackendPort = Resolve-ForwardPort $BackendPort "Backend"
+$FrontendPort = Resolve-ForwardPort $FrontendPort "Frontend"
+
 $backendForward = Start-Process kubectl `
     -ArgumentList "port-forward", "svc/backend-service", "$BackendPort`:8000", "-n", $Namespace `
     -RedirectStandardOutput artifacts/smoke-minikube/backend-port-forward.log `

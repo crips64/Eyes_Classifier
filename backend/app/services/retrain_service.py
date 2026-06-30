@@ -225,6 +225,7 @@ def _create_kubernetes_job(job_id: str, epochs: int, trigger_type: str) -> None:
                             ],
                             "volumeMounts": [
                                 {"name": "data", "mountPath": "/app/data"},
+                                {"name": "mlflow", "mountPath": "/mlflow"},
                                 {
                                     "name": "model",
                                     "mountPath": "/model",
@@ -241,6 +242,10 @@ def _create_kubernetes_job(job_id: str, epochs: int, trigger_type: str) -> None:
                         {
                             "name": "data",
                             "persistentVolumeClaim": {"claimName": "mlops-data"},
+                        },
+                        {
+                            "name": "mlflow",
+                            "persistentVolumeClaim": {"claimName": "mlflow-data"},
                         },
                         {"name": "model", "emptyDir": {}},
                     ],

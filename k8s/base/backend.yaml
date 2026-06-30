@@ -134,10 +134,14 @@ spec:
             limits: {cpu: "1", memory: 2Gi}
           volumeMounts:
             - {name: data, mountPath: /app/data}
+            - {name: mlflow, mountPath: /mlflow}
             - {name: model, mountPath: /model}
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: mlops-data
+        - name: mlflow
+          persistentVolumeClaim:
+            claimName: mlflow-data
         - name: model
           emptyDir: {}

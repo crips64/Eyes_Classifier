@@ -38,4 +38,9 @@ def test_kubernetes_retrain_job_pulls_bootstrap_weights(monkeypatch):
         "name": "MODEL_WEIGHTS_PATH",
         "value": "/model/eye_cnn_best_val_final.pth",
     } in trainer["env"]
+    assert {"name": "mlflow", "mountPath": "/mlflow"} in trainer["volumeMounts"]
+    assert {
+        "name": "mlflow",
+        "persistentVolumeClaim": {"claimName": "mlflow-data"},
+    } in pod["volumes"]
     assert {"name": "model", "emptyDir": {}} in pod["volumes"]

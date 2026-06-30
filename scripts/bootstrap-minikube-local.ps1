@@ -36,6 +36,12 @@ function Invoke-Dvc {
         throw "DVC command failed: $($DvcArgs -join ' ')"
     }
 }
+function Assert-Succeeded {
+    param([string]$Message)
+    if ($LASTEXITCODE -ne 0) {
+        throw $Message
+    }
+}
 if (-not (Test-Path ".git/HEAD")) {
     throw "The project must be initialized as a Git repository"
 }
@@ -45,13 +51,6 @@ if ($LASTEXITCODE -ne 0) {
     & $MinikubeCommand start --driver=docker `
         --cpus $MinikubeCpus --memory $MinikubeMemoryMb
 }
-
-$sha = (git rev-parse --short=12 HEAD).Trim()
-$imageTag = "sha-$sha"
-docker build -f docker/Dockerfile.backend -t "mlopseyes-backend:$imageTag" .
-docker build -f docker/Dockerfile.frontend -t "mlopseyes-frontend:$imageTag" .
-& $MinikubeCommand image load "mlopseyes-backend:$imageTag"
-& $MinikubeCommand image load "mlopseyes-frontend:$imageTag"
 
 $worktree = Join-Path $env:TEMP "mlops-eyes-gitops-worktree"
 $bareRoot = Join-Path $env:TEMP "mlops-eyes-git-server"
@@ -92,6 +91,22 @@ if ($IncludeWorkingTree) {
         Copy-Item -LiteralPath $sourcePath -Destination $targetPath -Force
     }
 }
+
+git -C $worktree add --all
+$snapshotStatus = git -C $worktree status --porcelain
+if ($snapshotStatus) {
+    git -C $worktree commit -m "chore(deploy): snapshot local working tree"
+}
+$snapshotSha = (git -C $worktree rev-parse --short=12 HEAD).Trim()
+$imageTag = "sha-$snapshotSha"
+docker build -f docker/Dockerfile.backend -t "mlopseyes-backend:$imageTag" .
+Assert-Succeeded "Backend Docker image build failed"
+docker build -f docker/Dockerfile.frontend -t "mlopseyes-frontend:$imageTag" .
+Assert-Succeeded "Frontend Docker image build failed"
+& $MinikubeCommand image load "mlopseyes-backend:$imageTag"
+Assert-Succeeded "Unable to load backend image into Minikube"
+& $MinikubeCommand image load "mlopseyes-frontend:$imageTag"
+Assert-Succeeded "Unable to load frontend image into Minikube"
 
 $overlay = Join-Path $worktree "k8s/overlays/minikube-local/kustomization.yaml"
 $overlayText = Get-Content -Raw $overlay
